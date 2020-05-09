@@ -169,7 +169,6 @@ def inv_complex(x, eps=0):
     abs2 = real**2 + imag**2
     out_real = real.clone()
     out_imag = imag.clone()
-
     out_real[abs2 > eps] = real[abs2 > eps] / abs2[abs2 > eps]
     out_imag[abs2 > eps] = - imag[abs2 > eps] / abs2[abs2 > eps]
     out_real[abs2 <= eps] = 0

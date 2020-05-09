@@ -88,6 +88,25 @@ def downsample_bicubic(I, scale, device):
         out[:,2:3, :, :] = downsample_bicubic_2D(I[:, 2:3, :, :], scale, device)
     return out
 
+def bicubic_up(img, scale, device):
+    flt_size = 4*scale + np.mod(scale, 2)
+    is_even = 1 - np.mod(scale, 2)
+    grid = np.linspace(-(flt_size//2) + 0.5*is_even, flt_size//2 - 0.5*is_even, flt_size)
+    Filter = torch.zeros(1,1,flt_size, flt_size).to(device)
+    for m in range(flt_size):
+        for n in range(flt_size):
+            Filter[0, 0, m, n] =  bicubic_kernel_2D(grid[n]/scale, grid[m]/scale)
+    h = flip(Filter)
+    pad = 1
+    x_pad = torch.nn.functional.pad(img, [pad, pad, pad, pad], mode='circular')
+    img_up_torch = torch.nn.functional.interpolate(img, scale_factor=scale, mode='bicubic')
+    img_up = torch.zeros_like(img_up_torch)
+    for ch in range(img.shape[1]):
+        img_up[:,ch:ch+1,:,:] = torch.nn.functional.conv_transpose2d(x_pad[:,ch:ch+1,:,:], h, stride=scale,
+            padding=(flt_size//2 + np.int(np.ceil(scale/2)), flt_size//2 + np.int(np.ceil(scale/2))))
+
+    return img_up#, img_up_torch
+
 def filter_2D_torch(I, Filter, device, pad = False):
     h = (Filter)/Filter.sum()
     if pad:

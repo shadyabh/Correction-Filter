@@ -31,7 +31,7 @@ Non-blind super-resolution with scale factor of 2 on Gaussian model with std 2.5
 ### synthetic Images
 Blind super-resolution with scale factor of 4 on Gaussian model with std 4.5/sqrt(2) (left is DBPN iterative without correction, left is with correction)
 
-<img width="400" src="https://github.com/shadyabh/Correction-Filter/tree/master/figs/blind SR/man2_Gauss_std3.2_x4_s.png"> <img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/Blind_SR/man2_Gauss_std3.2_x4_s_x4_corr_l0_est.png">
+<img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/man2_Gauss_std3.2_x4_s.png"> <img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/man2_Gauss_std3.2_x4_s_x4_corr_l0_est.png">
 
 
 # Citation:

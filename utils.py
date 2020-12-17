@@ -1,218 +1,179 @@
 import torch
-import torchvision
+import torch.fft
+import torchvision.transforms as transforms
 import numpy as np
 from scipy import interpolate
 from scipy import fftpack
 from scipy import integrate
 from scipy import signal
 from PIL import Image
-import cv2 as cv
 
 def flip(x):
     return x.flip([2,3])
 
-def roll_x(x, n):
-    return torch.cat((x[:,:,:,-n:], x[:,:,:,:-n]), dim = 3)
+def flip_torch(x):
+    x_ = torch.flip(torch.roll(x, ((x.shape[2]//2), (x.shape[3]//2)), dims=(2,3)), dims=(2,3))
+    return torch.roll(x_, (- (x_.shape[2]//2), -(x_.shape[3]//2)), dims=(2,3))
 
-def roll_y(x, n):
-    return torch.cat((x[:,:,-n:,:], x[:,:,:-n,:]), dim = 2)
+def flip_np(x):
+    x_ = np.flip(np.roll(x, ((x.shape[0]//2), (x.shape[1]//2)), (0,1)))
+    return np.roll(x_, (- (x_.shape[0]//2), -(x_.shape[1]//2)), (0,1))
 
-def bicubic_kernel_2D(x, y, a=-0.5):
-    # get X
+def shift_by(H, shift):
+    k_x = np.linspace(0, H.shape[3]-1, H.shape[3])
+    k_y = np.linspace(0, H.shape[2]-1, H.shape[2])
+
+    k_x[((k_x.shape[0] + 1)//2):] -= H.shape[3]
+    k_y[((k_y.shape[0] + 1)//2):] -= H.shape[2]
+
+    exp_x, exp_y = np.meshgrid(np.exp(-1j * 2* np.pi * k_x * shift / H.shape[3]), np.exp(-1j * 2* np.pi * k_y * shift / H.shape[2]))
+
+    exp_x_torch = (torch.tensor(np.real(exp_x)) + 1j*torch.tensor(np.imag(exp_x))).unsqueeze(0).unsqueeze(0).to(H.device)
+    exp_y_torch = (torch.tensor(np.real(exp_y)) + 1j*torch.tensor(np.imag(exp_y))).unsqueeze(0).unsqueeze(0).to(H.device)
+
+    return H * exp_x_torch * exp_y_torch
+
+def fft_torch(x, s=None, zero_centered=True):
+    # s = (Ny, Nx)
+    __,__,H,W = x.shape
+    if s == None:
+        s = (H, W)
+    if zero_centered:
+        x_ = torch.roll(x, ((H//2), (W//2)), dims=(2,3))
+    else:
+        x_ = x
+    x_pad = torch.nn.functional.pad(x_, (0, s[1] - W, 0, s[0] - H))
+    if zero_centered:
+        x_pad_ = torch.roll(x_pad, (- (H//2), -(W//2)), dims=(2,3))
+    else:
+        x_pad_ = x_pad
+    return torch.fft.fftn(x_pad_, dim=(-2,-1))
+
+def bicubic_ker(x, y, a=-0.5):
+    # X:
     abs_phase = np.abs(x)
-    abs_phase3 = abs_phase**3
     abs_phase2 = abs_phase**2
-    if abs_phase < 1:
-        out_x = (a+2)*abs_phase3 - (a+3)*abs_phase2 + 1
-    else:
-        if abs_phase >= 1 and abs_phase < 2:
-            out_x = a*abs_phase3 - 5*a*abs_phase2 + 8*a*abs_phase - 4*a 
-        else:
-            out_x = 0
-    # get Y
+    abs_phase3 = abs_phase**3
+    out_x = np.zeros_like(x)
+    out_x[abs_phase <= 1] = (a+2)*abs_phase3[abs_phase <= 1] - (a+3)*abs_phase2[abs_phase <= 1] + 1
+    out_x[(abs_phase > 1) & (abs_phase < 2)] = a*abs_phase3[(abs_phase > 1) & (abs_phase < 2)] -\
+                                              5*a*abs_phase2[(abs_phase > 1) & (abs_phase < 2)] +\
+                                              8*a*abs_phase[(abs_phase > 1) & (abs_phase < 2)] - 4*a
+    # Y:
     abs_phase = np.abs(y)
-    abs_phase3 = abs_phase**3
     abs_phase2 = abs_phase**2
-    if abs_phase < 1:
-        out_y = (a+2)*abs_phase3 - (a+3)*abs_phase2 + 1
-    else:
-        if abs_phase >= 1 and abs_phase < 2:
-            out_y = a*abs_phase3 - 5*a*abs_phase2 + 8*a*abs_phase - 4*a 
-        else:
-            out_y = 0
+    abs_phase3 = abs_phase**3
+    out_y = np.zeros_like(y)
+    out_y[abs_phase <= 1] = (a+2)*abs_phase3[abs_phase <= 1] - (a+3)*abs_phase2[abs_phase <= 1] + 1
+    out_y[(abs_phase > 1) & (abs_phase < 2)] = a*abs_phase3[(abs_phase > 1) & (abs_phase < 2)] -\
+                                              5*a*abs_phase2[(abs_phase > 1) & (abs_phase < 2)] +\
+                                              8*a*abs_phase[(abs_phase > 1) & (abs_phase < 2)] - 4*a 
 
     return out_x*out_y
 
-def get_bicubic(size, scale):
-    is_even = not np.mod(size, 2)
-    grid_r = np.linspace(-(size//2) + 0.5*is_even,  size//2 - 0.5*is_even, size)
-    r = np.zeros((size, size))
-    for m in range(size):
-        for n in range(size):
-            r[m, n] = bicubic_kernel_2D(grid_r[n]/scale, grid_r[m]/scale)
-    r = r/r.sum()
+def build_flt(f, size):
+    is_even_x = not size[1] % 2 
+    is_even_y = not size[0] % 2 
 
-    return r
+    grid_x = np.linspace(-(size[1]//2 - is_even_x*0.5), (size[1]//2 - is_even_x*0.5), size[1])
+    grid_y = np.linspace(-(size[0]//2 - is_even_y*0.5), (size[0]//2 - is_even_y*0.5), size[0])
 
-def get_gauss_flt(flt_size, std):
-    is_even = 1 - np.mod(flt_size[0], 2)
-    grid = np.linspace(- (flt_size[0]//2) + 0.5*is_even, flt_size[0]//2 - 0.5*is_even, flt_size[0])
-    h = np.zeros(flt_size)
-    for m in range(flt_size[0]):
-        for n in range(flt_size[1]):
-            h[m, n] = np.exp(-(grid[n]**2 + grid[m]**2)/(2*std**2))
+    x, y = np.meshgrid(grid_x, grid_y)
+
+    h =f(x, y)
+    h = np.roll(h, (- (h.shape[0]//2), -(h.shape[1]//2)), (0,1))
+
+    return torch.tensor(h).float().unsqueeze(0).unsqueeze(0)
+
+def get_bicubic(scale, size=None):
+    f = lambda x,y: bicubic_ker(x/scale, y/scale)
+    if size:
+        h = build_flt(f, (size[0], size[1]))
+    else:
+        h = build_flt(f, (4*scale + 8 + scale%2, 4*scale + 8 + scale%2))
     return h
 
-def downsample_bicubic_2D(I, scale, device):
-    # scale: integer > 1
-    filter_supp = 4*scale + 2 + np.mod(scale, 2)
-    is_even = 1 - np.mod(scale, 2)
-    Filter = torch.zeros(1,1,filter_supp,filter_supp).float().to(device)
-    grid = np.linspace(-(filter_supp//2) + 0.5*is_even, filter_supp//2 - 0.5*is_even, filter_supp)
-    for n in range(filter_supp):
-        for m in range(filter_supp):
-            Filter[0, 0, m, n] = bicubic_kernel_2D(grid[n]/scale, grid[m]/scale)
+def get_box(supp, size=None):
+    if size == None:
+        size = (supp[0]*2, supp[1]*2)
 
-    h = Filter/torch.sum(Filter)
-    pad = np.int((filter_supp - scale)/2)
-    I_padded = torch.nn.functional.pad(I, [pad, pad, pad, pad], mode='circular')
-    I_out = torch.nn.functional.conv2d(I_padded, h, stride=(scale, scale))
+    h = np.zeros(size)
 
-    return I_out
+    h[0:supp[0]//2  , 0:supp[1]//2] = 1
+    h[0:supp[0]//2  , -(supp[1]//2):] = 1
+    h[-(supp[0]//2):, 0:supp[1]//2] = 1
+    h[-(supp[0]//2):, -(supp[1]//2):] = 1
 
-def downsample_bicubic(I, scale, device):
-    out = torch.zeros(I.shape[0], I.shape[1], I.shape[2]//scale, I.shape[3]//scale).to(device)
-    out[:,0:1, :, :] = downsample_bicubic_2D(I[:, 0:1, :, :], scale, device)
-    if(I.shape[1] > 1):
-        out[:,1:2, :, :] = downsample_bicubic_2D(I[:, 1:2, :, :], scale, device)
-        out[:,2:3, :, :] = downsample_bicubic_2D(I[:, 2:3, :, :], scale, device)
-    return out
+    return torch.tensor(h).float().unsqueeze(0).unsqueeze(0)
 
-def bicubic_up(img, scale, device):
-    flt_size = 4*scale + np.mod(scale, 2)
-    is_even = 1 - np.mod(scale, 2)
-    grid = np.linspace(-(flt_size//2) + 0.5*is_even, flt_size//2 - 0.5*is_even, flt_size)
-    Filter = torch.zeros(1,1,flt_size, flt_size).to(device)
-    for m in range(flt_size):
-        for n in range(flt_size):
-            Filter[0, 0, m, n] =  bicubic_kernel_2D(grid[n]/scale, grid[m]/scale)
-    h = flip(Filter)
-    pad = 1
-    x_pad = torch.nn.functional.pad(img, [pad, pad, pad, pad], mode='circular')
-    img_up_torch = torch.nn.functional.interpolate(img, scale_factor=scale, mode='bicubic')
-    img_up = torch.zeros_like(img_up_torch)
-    for ch in range(img.shape[1]):
-        img_up[:,ch:ch+1,:,:] = torch.nn.functional.conv_transpose2d(x_pad[:,ch:ch+1,:,:], h, stride=scale,
-            padding=(flt_size//2 + np.int(np.ceil(scale/2)), flt_size//2 + np.int(np.ceil(scale/2))))
+def get_delta(size):
+    h = torch.zeros(1,1,size,size)
+    h[0,0,0,0] = 1
+    return h
 
-    return img_up#, img_up_torch
+def get_gauss_flt(flt_size, std):
+    f = lambda x,y: np.exp( -(x**2 + y**2)/2/std**2 )
+    h = build_flt(f, (flt_size,flt_size))
+    return h
 
-def filter_2D_torch(I, Filter, device, pad = False):
-    h = (Filter)/Filter.sum()
-    if pad:
-        pad_y = Filter.shape[2] // 2
-        pad_x = Filter.shape[3] // 2
-        I_pad = torch.nn.functional.pad(I, (pad_x, pad_x, pad_y, pad_y), mode=pad)
-    else:
-        I_pad = I
-    batch, C, H, W = I_pad.shape
-    out = torch.nn.functional.conv2d(I_pad.view(-1, 1, H, W), h)
+def fft_Filter_(x, A):
+    X_fft = torch.fft.fftn(x, dim=(-2,-1))
+    HX = A * X_fft
+    return torch.fft.ifftn(HX, dim=(-2,-1))
 
-    return out.view(batch, C, out.shape[2], out.shape[3])
+def fft_Down_(x, h, alpha):
+    X_fft = torch.fft.fftn(x, dim=(-2,-1))
+    H = fft_torch(h, s=X_fft.shape[2:4])
+    HX = H * X_fft
+    margin = (alpha - 1)//2
+    y = torch.fft.ifftn(HX, dim=(-2,-1))[:,:,margin:HX.shape[2]-margin:alpha, margin:HX.shape[3]-margin:alpha]
+    return y
 
-def downsample_using_h(I_in, Filter, scale, device, pad=False):
-    filter_supp_x = Filter.shape[3]
-    filter_supp_y = Filter.shape[2]
-    h = (Filter)/torch.sum(Filter)
-    if pad:
-        pad_x = np.int((filter_supp_x - scale)/2)
-        pad_y = np.int((filter_supp_y - scale)/2)
-        I_padded = torch.nn.functional.pad(I_in, [pad_x, pad_x, pad_y, pad_y], mode=pad)
-    else:
-        pad_x = scale//2
-        pad_y = scale//2
-        I_padded = torch.nn.functional.pad(I_in, [pad_x, pad_x, pad_y, pad_y], mode='constant')
-    batch, c, H, W = I_padded.shape
-    I_out = torch.nn.functional.conv2d(I_padded.view(-1,1,H,W), h, stride=scale)
-    return I_out.view(batch, c, I_out.shape[2], I_out.shape[3])
-    
-def fft2(s, n_x = [], n_y = []):
-    h, w = s.shape[2], s.shape[3]
-    if(n_x == []):
-        n_x = w
-    if(n_y == []):
-        n_y = h 
-    s_pad = torch.nn.functional.pad(s, (0, n_x - w, 0 , n_y - h))
+def fft_Up_(y, h, alpha):
+    x = torch.zeros(y.shape[0], y.shape[1], y.shape[2]*alpha, y.shape[3]*alpha).to(y.device) 
+    H = fft_torch(h, s=x.shape[2:4])
+    start = alpha//2
+    x[:,:,start::alpha, start::alpha] = y
+    X = torch.fft.fftn(x, dim=(-2,-1))
+    HX = H * X
+    return torch.fft.ifftn(HX, dim=(-2,-1))
 
-    return torch.rfft(s_pad, signal_ndim=2, normalized=False, onesided=False)
+def zero_SV(H, eps):
+    H_real = H.real
+    H_imag = H.imag
+    abs_H2 = H_real**2 + H_imag**2 
+    H[abs_H2/abs_H2.max() <= eps**2] = 0
+    return H
 
-def mul_complex(t1, t2):
-    ## Re{Z0 * Z1} = a0*a1 - b0*b1
-    out_real = t1[:,:,:,:,0:1]*t2[:,:,:,:,0:1] - t1[:,:,:,:,1:2]*t2[:,:,:,:,1:2]
-    ## Im{Z0 * Z1} = i*(a0*b1 + b0*a1)
-    out_imag = t1[:,:,:,:,0:1]*t2[:,:,:,:,1:2] + t1[:,:,:,:,1:2]*t2[:,:,:,:,0:1]
-    return torch.cat((out_real, out_imag), dim=4)
-
-def conj(x):
-    out = x.clone()
-    out[:,:,:,:,1] = -out[:,:,:,:,1]
-    return out 
-
-def abs2(x):
-    out = torch.zeros_like(x)
-    out[:,:,:,:,0] = x[:,:,:,:,0]**2 + x[:,:,:,:,1]**2
-    return out
-
-def inv_complex(x, eps=0):
-    real = x[:,:,:,:,0]
-    imag = x[:,:,:,:,1]
+def dagger(X, eps=0, mode='Tikhonov'):    
+    real = X.real
+    imag = X.imag
     abs2 = real**2 + imag**2
-    out_real = real.clone()
-    out_imag = imag.clone()
-    out_real[abs2 > eps] = real[abs2 > eps] / abs2[abs2 > eps]
-    out_imag[abs2 > eps] = - imag[abs2 > eps] / abs2[abs2 > eps]
-    out_real[abs2 <= eps] = 0
-    out_imag[abs2 <= eps] = 0
+    if mode == 'naive':
+        out = X.clone()
+        out[abs2/abs2.max() > eps**2] = 1/X[abs2/abs2.max() > eps**2]
+        out[abs2/abs2.max() <= eps**2] = 0
+        return out 
+    if mode == 'Tikhonov':
+        return X.conj()/(abs2 + eps**2)
 
-    return torch.cat((out_real.unsqueeze(4), out_imag.unsqueeze(4)), dim = 4)
+def load_img_torch(dir, device):
+    I = Image.open(dir)
+    I = transforms.ToTensor()(I).unsqueeze(0)
+    return I.to(device)
 
-def tensorImg2npImg(I):
-    return np.moveaxis(np.array(I[0,:].detach().cpu()), 0, 2)
-
-def save_imag(I, dir):
-    I = torch.clamp(I, 0, 1)
-    I_np = tensorImg2npImg(I)
-    if(I_np.shape[2] == 1):
-        I_PIL = Image.fromarray(np.uint8(I_np[:,:,0]*255))
+def save_img_torch(I, dir, clamp=True):
+    if clamp:
+        img = torch.clamp(I, 0, 1)[0,:].detach().cpu()
     else:
-        I_PIL = Image.fromarray(np.uint8(I_np*255))
-    I_PIL.save(dir)
-
-def load_img(dir, device):
-    I_PIL = Image.open(dir)
-    I_np = np.array(I_PIL)/255.0
-    if(np.shape(I_np.shape)[0] < 3):
-        I = torch.tensor(I_np).float().unsqueeze(0).unsqueeze(0).to(device)
-    else:
-        I_np = I_np[:,:,0:3]
-        I = torch.tensor(np.moveaxis(I_np, 2, 0)).float().unsqueeze(0).to(device)
-    return I
-
-def get_boundaries_mask(size, sigma, device):
-    is_even = not np.mod(size[0], 2)
-    grid_y = np.linspace(-(size[0]//2) + 0.5*is_even,  size[0]//2 - 0.5*is_even, size[0])
-    is_even = not np.mod(size[1], 2)
-    grid_x = np.linspace(-(size[1]//2) + 0.5*is_even,  size[1]//2 - 0.5*is_even, size[1])
-    mask = np.zeros(size)
-    for m in range(size[0]):
-        for n in range(size[1]):
-            mask[m, n] = 1 - np.exp( -(grid_x[n]**2 + grid_y[m]**2)/(2*sigma**2) )
-    return torch.tensor(mask).float().unsqueeze(0).unsqueeze(0).to(device)   
+        img = I[0,:].detach().cpu()
+    img = transforms.ToPILImage()(img)
+    img.save(dir)
 
 def get_center_of_mass(s, device):
     idx_x = torch.linspace(0, s.shape[3]-1, s.shape[3]).to(device)
     idx_y = torch.linspace(0, s.shape[2]-1, s.shape[2]).to(device)
-    i_x, i_y = torch.meshgrid(idx_x, idx_y)
+    i_y, i_x = torch.meshgrid(idx_y, idx_x)
 
     x_c = torch.sum(s*i_x/s.sum())
     y_c = torch.sum(s*i_y/s.sum())
@@ -225,8 +186,8 @@ def crop_high_freq(I, crop_size, device):
         argmax_y = I.shape[2]//2 - crop_size//2
     else:
         filt = torch.tensor([[ 0,-1, 0],
-                            [-1, 4,-1],
-                            [ 0,-1, 0]]).float().to(device)
+                             [-1, 4,-1],
+                             [ 0,-1, 0]]).float().to(device)
         if(I.shape[1] > 1):
             I_gray = 0.2126*I[:,0:1,:,:] + 0.7152*I[:,1:2,:,:] + 0.0722*I[:,2:3,:,:]
         else:
@@ -237,8 +198,3 @@ def crop_high_freq(I, crop_size, device):
         argmax_y = argmax//Avg.shape[3]
         argmax_x = argmax % Avg.shape[3]
     return argmax_x, argmax_y    
-
-def equiv_flt_conv(s1, s2):
-    return torch.nn.functional.conv2d(s1, flip(s2), padding=(s2.shape[2] - 1, s2.shape[3]-1))
-
-

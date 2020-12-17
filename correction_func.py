@@ -1,104 +1,130 @@
 import torch
+import torch.fft
 import numpy as np
 import utils
 
-def correct_img_torch(x_s, scale, r, s, device, for_dag = True, eps = 1e-9, pad='circular'):
-    conv_shape = (s.shape[2] + r.shape[2] - 1, s.shape[3] + r.shape[3] - 1)
-    S = utils.fft2(s/s.sum(), conv_shape[1], conv_shape[0])
-    R = utils.fft2(utils.flip(r)/r.sum(), conv_shape[1], conv_shape[0])
-    Q_unscaled = utils.mul_complex(R, S)
-    q_unscaled = torch.irfft(Q_unscaled, signal_ndim=2, normalized=False, onesided=False)
-    q = q_unscaled[:,:,np.mod(q_unscaled.shape[2], scale)::scale, np.mod(q_unscaled.shape[3], scale)::scale]
-    Q = torch.rfft(q, signal_ndim=2, normalized=False, onesided=False)
+from torch.optim.lr_scheduler import StepLR
 
-    # Q_star = utils.conj(Q)
-    # abs2_Q = utils.abs2(Q)
-    # H = torch.cat( (Q_star[:,:,:,:,0:1]/(abs2_Q[:,:,:,:,0:1] + eps), Q_star[:,:,:,:,1:2]/(abs2_Q[:,:,:,:,0:1] + eps)), dim=4)
+class Correction_Filter():
+    def __init__(self, s, scale_factor, x_shape, eps=0, r=None, inv_type='naive'):
+        self.s = s.clone()
+        self.r = None
+        if r != None:
+            self.r = r.clone()
+        else:
+            self.r = utils.get_bicubic(scale_factor).float().to(s.device)
+            self.r = self.r/self.r.sum()
+        self.shape = x_shape
+        self.scale_factor = scale_factor
+        self.eps = eps
+        self.inv_type = inv_type
+        self.H = self.find_H(self.s, self.r)
+        
+    def correct_img(self, y):
+        y_h = utils.fft_Filter_(y, self.H)
+        return y_h
 
-    H = utils.inv_complex(Q, eps)
+    def correct_img_(self, y, s):
+        self.H = self.find_H(s, self.r)
+        y_h = utils.fft_Filter_(y, self.H)
+        return y_h  
+    
+    def find_H(self, s, r):
+        R = utils.fft_torch(r, self.shape)
+        S = utils.fft_torch(s, self.shape)
 
-    h_ = torch.irfft(H, signal_ndim=2, normalized=False, onesided=False)
-    h = utils.roll_y(utils.roll_x(h_/h_.sum(), -1), -1)
+        R, S = utils.shift_by(R, 0.5*(not self.scale_factor%2)), utils.shift_by(S, 0.5*(not self.scale_factor%2))
 
-    x_h = utils.filter_2D_torch(x_s, utils.flip(h), device, pad=pad)
+        # Find Q = S*R
+        Q = S.conj() * R
+        q = torch.fft.ifftn(Q, dim=(-2,-1))
+        
+        q_d = q[:,:,0::self.scale_factor,0::self.scale_factor]
+        Q_d = torch.fft.fftn(q_d, dim=(-2,-1))
 
-    if(for_dag):
-        x_h = utils.bicubic_up(x_h, scale, device)
-        x_h = utils.downsample_bicubic(x_h, scale, device)
+        # Find R*R
+        RR = R.conj() * R
+        rr = torch.fft.ifftn(RR, dim=(-2,-1))
+        rr_d = rr[:,:,0::self.scale_factor,0::self.scale_factor]
+        RR_d = torch.fft.fftn(rr_d, dim=(-2,-1))
 
-    return x_h
+        # Invert S*R
+        Q_d_inv = utils.dagger(Q_d, self.eps, mode=self.inv_type)
 
-def est_corr(img_name, y_full, R_dag, S_conj, F, H, conf, log_file=None, ref_bic=None, s_target=None):
-    crop = min(conf.crop, min(y_full.shape[2], y_full.shape[3]))
-    topleft_x, topleft_y = utils.crop_high_freq(y_full, crop, conf.device)
+        H = RR_d * Q_d_inv
+
+        return H
+
+def est_corr(img_name, y_full, R_dag, S_conj, args, log_file=None, ref_bic=None, s_target=None):
+    # Crop to area with the most high frequency texture
+    crop = min(args.crop, min(y_full.shape[2], y_full.shape[3]))
+    topleft_x, topleft_y = utils.crop_high_freq(y_full, crop, args.device)
     print('crop (x,y) = (%d, %d)' %(topleft_x, topleft_y))
 
-    init_s1 = torch.tensor(utils.get_bicubic(conf.base_s_size + 1, conf.scale)).float().unsqueeze(0).unsqueeze(0).to(conf.device)
-    s1 = torch.autograd.Variable(init_s1, requires_grad=True) 
-    optimizer_s1 = torch.optim.Adam([s1], conf.lr_s, amsgrad=False)
+    init_sd1 = utils.get_bicubic(1, (31, 31)).to(args.device)
+    init_sd1= init_sd1/init_sd1.sum()
+    s_d_1 = torch.autograd.Variable(init_sd1, requires_grad=True) 
+    
+    init_sd2 = utils.get_bicubic(1, (31, 31)).to(args.device)
+    init_sd2 = init_sd2/init_sd2.sum()
+    s_d_2 = torch.autograd.Variable(init_sd2, requires_grad=True) 
+    
+    init_sd3 = utils.get_bicubic(1, (31, 31)).to(args.device)
+    init_sd3 = init_sd3/init_sd3.sum()
+    s_d_3 = torch.autograd.Variable(init_sd3, requires_grad=True) 
 
-    init_s2 = torch.tensor(utils.get_bicubic(conf.base_s_size + 1, conf.scale)).float().unsqueeze(0).unsqueeze(0).to(conf.device)
-    s2 = torch.autograd.Variable(init_s2, requires_grad=True) 
-    optimizer_s2 = torch.optim.Adam([s2], conf.lr_s, amsgrad=False)
+    init_sd4 = utils.get_bicubic(args.scale_factor, (32, 32)).to(args.device)
+    init_sd4 = init_sd4/init_sd4.sum()
+    s_d_4 = torch.autograd.Variable(init_sd4, requires_grad=True) 
+    optimizer_sd = torch.optim.Adam([{'params' : s_d_1, 'lr': args.lr_s}, {'params' : s_d_2, 'lr': args.lr_s}, {'params' : s_d_3, 'lr': args.lr_s}, {'params' : s_d_4, 'lr': args.lr_s}])
 
-    init_s3 = torch.tensor(utils.get_bicubic(conf.base_s_size + 1, conf.scale)).float().unsqueeze(0).unsqueeze(0).to(conf.device)
-    s3 = torch.autograd.Variable(init_s3, requires_grad=True) 
-    optimizer_s3 = torch.optim.Adam([s3], conf.lr_s, amsgrad=False)
+    objective = torch.nn.L1Loss()
 
-    init_s4 = torch.tensor(utils.get_bicubic(conf.base_s_size, conf.scale)).float().unsqueeze(0).unsqueeze(0).to(conf.device)
-    s4 = torch.autograd.Variable(init_s4, requires_grad=True) 
-    optimizer_s4 = torch.optim.Adam([s4], conf.lr_s, amsgrad=False)
+    s_c = torch.fft.ifftn(utils.fft_torch(s_d_1/s_d_1.sum(), y_full.shape[2:4])*utils.fft_torch(s_d_2/s_d_2.sum(), y_full.shape[2:4])*
+                          utils.fft_torch(s_d_3/s_d_3.sum(), y_full.shape[2:4])*utils.fft_torch(s_d_4/s_d_4.sum(), y_full.shape[2:4]) ,dim=(-2,-1))
+    with torch.no_grad():
+        corr_flt = Correction_Filter(s_c, args.scale_factor, (y_full.shape[2]*args.scale_factor, y_full.shape[3]*args.scale_factor), inv_type='Tikhonov', eps=0)
 
-    for itr in range(conf.iterations):
-        optimizer_s1.zero_grad()
-        optimizer_s2.zero_grad()
-        optimizer_s3.zero_grad()
-        optimizer_s4.zero_grad()
+    for itr in range(args.iterations):
+        optimizer_sd.zero_grad()
 
-        s = utils.equiv_flt_conv(s4, 
-            utils.equiv_flt_conv(s3, 
-            utils.equiv_flt_conv(s2, s1)
-            ) # s3
-            ) # s4
-        
-        y_full_h = H(y_full, s, conf.eps)
+        s_c = torch.fft.ifftn(utils.fft_torch(s_d_1/s_d_1.sum(), y_full.shape[2:4])*utils.fft_torch(s_d_2/s_d_2.sum(), y_full.shape[2:4])*
+                          utils.fft_torch(s_d_3/s_d_3.sum(), y_full.shape[2:4])*utils.fft_torch(s_d_4/s_d_4.sum(), y_full.shape[2:4]) ,dim=(-2,-1))
+
+        y_full_h = torch.abs(corr_flt.correct_img_(y_full, s_c)).float()
         y_h = y_full_h[:,:,topleft_y:topleft_y+crop, topleft_x:topleft_x+crop]
-        
-        if(conf.out_curr_corr and np.mod(itr, 10) == 0):
-            utils.save_imag(y_full_h, conf.out_dir + 'in_loop.png')
 
-        if(conf.gpu == "cpu"):
-            with torch.no_grad():
-                x_hat = R_dag(y_h) 
-        else:
-            x_hat = R_dag(y_h) 
-        
-        y_hat = S_conj(x_hat, s, False)
+        x_hat = R_dag(y_h + torch.randn_like(y_h)*args.per_std) 
 
+        x_hat1 = utils.fft_Filter_(x_hat,  utils.fft_torch(utils.flip_torch(s_d_1)/s_d_1.sum(), s = x_hat.shape[2:4]))
+        x_hat2 = utils.fft_Filter_(x_hat1, utils.fft_torch(utils.flip_torch(s_d_2)/s_d_2.sum(), s = x_hat1.shape[2:4]))
+        x_hat3 = utils.fft_Filter_(x_hat2, utils.fft_torch(utils.flip_torch(s_d_3)/s_d_3.sum(), s = x_hat2.shape[2:4]))
+
+        y_hat = torch.abs(S_conj(x_hat3, s_d_4/s_d_4.sum()))
+        
         shave = ((crop - y_hat.shape[2])//2, (crop - y_hat.shape[3])//2 )
         y = y_full[:,:,topleft_y+shave[0]:topleft_y+crop-shave[0], topleft_x+shave[1]:topleft_x+crop-shave[1]]
-        consistency = conf.l1(y_hat, y)
-
+        consistency = objective(y_hat[:,:,2:-2, 2:-2], y[:,:,2:-2, 2:-2])
         with torch.no_grad():
-            x_c, y_c = utils.get_center_of_mass(s, conf.device)
-        l_bound = conf.bound_loss(s)
-        l0 = conf.l1(torch.abs(s[s!=0])**conf.l0_pow, torch.zeros_like(s[s!=0]))
-        l_center = torch.sum( (x_c - (4*conf.base_s_size-1)/2)**2 + (y_c - (4*conf.base_s_size-1)/2)**2 )
-        loss = consistency + conf.lambda_bound*l_bound + conf.lambda_l0*l0 + conf.lambda_center*l_center
+            x_c, y_c = utils.get_center_of_mass(torch.roll(s_c.real, (s_c.shape[2]//2, s_c.shape[3]//2), dims=(-2,-1)), args.device)
+        
+        abs_s = torch.abs(s_c)
+        l0 = torch.mean( abs_s[abs_s > 0]**0.5 ) # Relaxed l_0
+        loss = consistency + args.lambda_l0*l0
+        
         loss.backward()
-        optimizer_s1.step()
-        optimizer_s2.step()
-        optimizer_s3.step()
-        optimizer_s4.step()
+        optimizer_sd.step()
 
         with torch.no_grad():
-            opt_s = s.clone()
-            s_norm = s/s.sum()
+            if(args.save_trace and np.mod(itr, 10) == 0):
+                utils.save_img_torch(y_full_h, args.out_dir + 'within_loop.png')           
+
+            opt_s = s_c.clone()
+            s_norm = s_c/s_c.sum()
             out_log = img_name[:-4] + \
                 '| Itr = %d' %itr + \
                 '| loss = %.7f' %(loss.item()) + \
-                '| obj = %.7f' %(consistency.item()) + \
-                '| x_c, y_c, 0 = %.2f, %.2f, %.2f' %(x_c, y_c, (4*conf.base_s_size-1)/2)
+                '| x_c, y_c = %.2f/%.2f, %.2f/%.2f' %(x_c, (s_c.shape[3] - 1)/2, y_c, (s_c.shape[2] - 1)/2)
             if not ref_bic == None:
                 out_log += '| PSNR bic = %.5f' %(-10*torch.log10( torch.mean( (y_full_h - ref_bic)**2 ) ))
             if not s_target == None:

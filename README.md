@@ -48,11 +48,11 @@ Blind super-resolution with scale factor of 4 on Gaussian model with std 4.5/sqr
 
 Blind super-resolution with scale factor of 2 tested on images from DIV2KRK dataset http://www.wisdom.weizmann.ac.il/~vision/kernelgan/ (left is DBPN without correction, left is with estimated correction filter)
 
-<img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/im_31.png"> <img width="500" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/im_31_x2_corr_est.png">
+<img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/im_31.png"> <img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/im_31_x2_corr_est.png">
 
-<img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/im_59.png"> <img width="500" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/im_59_x2_corr_est.png">
+<img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/im_59.png"> <img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/im_59_x2_corr_est.png">
 
-<img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/im_66.png"> <img width="500" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/im_66_x2_corr_est.png">
+<img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/im_66.png"> <img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/im_66_x2_corr_est.png">
 
 ## Real-World Super-Resolution
 Here we present the results of our approach on images with no ground-truth images
@@ -62,9 +62,9 @@ Here we take images from Set5 and apply our blind SR (scale factor of 2) algorit
 
 On the left is DBPN without correction, right is with estimated correction filter.
 
-<img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/bird_.png"> <img width="500" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/bird_x2_corr_est.png">
+<img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/bird_.png"> <img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/bird_x2_corr_est.png">
 
-<img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/butterfly.png"> <img width="500" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/butterfly_x2_corr_est.png">
+<img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/butterfly.png"> <img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/butterfly_x2_corr_est.png">
 
 ### Chip image
 

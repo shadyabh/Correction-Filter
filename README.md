@@ -26,13 +26,13 @@ Note that this code assumes that the images within a folder are sampled using th
 
 # Results
 ## Non-Blind Super-Resolution
-Non-blind super-resolution with scale factor of 4 on Gaussian model with std 4.5/sqrt(2) (left is DBPN without correction, left is with correction filter)
+Non-blind super-resolution with scale factor of 4 on Gaussian model with std 4.5/sqrt(2) (left is DBPN without correction, right is with correction filter)
 
 <img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/SR/baboon_Gauss_std3.2_x4_s.png"> <img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/SR/baboon_Gauss_std3.2_x4_s_x4_corr_corrected.png">
 
 <img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/SR/zebra_Gauss_std3.2_x4_s.png"> <img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/SR/zebra_Gauss_std3.2_x4_s_x4_corr_corrected.png">
 
-Non-blind super-resolution with scale factor of 2 on Gaussian model with std 2.5/sqrt(2) (left is DBPN without correction, left is with correction filter)
+Non-blind super-resolution with scale factor of 2 on Gaussian model with std 2.5/sqrt(2) (left is DBPN without correction, right is with correction filter)
 
 <img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/SR/bridge_Gauss_std1.8_x2_s.png"> <img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/SR/bridge_Gauss_std1.8_x2_s_x2_corr_corrected.png">
 
@@ -40,7 +40,7 @@ Non-blind super-resolution with scale factor of 2 on Gaussian model with std 2.5
 ### Synthetic Images
 Here we demonstrate the performance of our method on images that were sampled from their ground-truth image.
 #### Man image from Set14
-Blind super-resolution with scale factor of 4 on Gaussian model with std 4.5/sqrt(2) (left is DBPN without correction, left is with estimated correction filter)
+Blind super-resolution with scale factor of 4 on Gaussian model with std 4.5/sqrt(2) (left is DBPN without correction, right is with estimated correction filter)
 
 <img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/man2_Gauss_std3.2_x4_s.png"> <img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/man2_Gauss_std3.2_x4_s_x4_corr_l0_est.png">
 
@@ -58,7 +58,9 @@ Blind super-resolution with scale factor of 2 tested on images from DIV2KRK data
 Here we present the results of our approach on images with no ground-truth images
 
 ### Images from Set5 dataset
-Here we take images from Set5 and apply our blind SR (scale factor of 2) algorithm on them directly (without down-sampling them).
+Here we take images from Set5 and apply our blind SR (scale factor of 2) algorithm on them directly (without down-sampling them). 
+
+On the left is DBPN without correction, right is with estimated correction filter.
 
 <img width="500" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/bird_.png"> <img width="500" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/bird_x2_corr_est.png">
 
@@ -66,6 +68,6 @@ Here we take images from Set5 and apply our blind SR (scale factor of 2) algorit
 
 ### Chip image
 
-Super resolution with scale factor of 4 on the famous chip image.
+Super resolution with scale factor of 4 on the famous chip image. On the left is the original LR image, in the middle is the result of DBPN applied directly, and on the right is DBPN applied with the estimated correction filter.
 
 <img width="100" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/chip_LR.png"> <img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/chip.png"> <img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/chip_x4_corrected_est.png">

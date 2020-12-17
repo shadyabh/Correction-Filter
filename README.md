@@ -17,31 +17,31 @@ Note that this code assumes that the images within a folder are sampled using th
 
 # Results
 ## Non-Blind Super-Resolution
-Non-blind super-resolution with scale factor of 4 on Gaussian model with std 4.5/sqrt(2) (left is DBPN iterative without correction, left is with correction filter)
+Non-blind super-resolution with scale factor of 4 on Gaussian model with std 4.5/sqrt(2) (left is DBPN without correction, left is with correction filter)
 
 <img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/SR/baboon_Gauss_std3.2_x4_s.png"> <img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/SR/baboon_Gauss_std3.2_x4_s_x4_corr_corrected.png">
 
 <img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/SR/zebra_Gauss_std3.2_x4_s.png"> <img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/SR/zebra_Gauss_std3.2_x4_s_x4_corr_corrected.png">
 
-Non-blind super-resolution with scale factor of 2 on Gaussian model with std 2.5/sqrt(2) (left is DBPN iterative without correction, left is with correction filter)
+Non-blind super-resolution with scale factor of 2 on Gaussian model with std 2.5/sqrt(2) (left is DBPN without correction, left is with correction filter)
 
 <img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/SR/bridge_Gauss_std1.8_x2_s.png"> <img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/SR/bridge_Gauss_std1.8_x2_s_x2_corr_corrected.png">
 
 ## Blind Super-Resolution
 ### Synthetic Images
 #### Man image from Set14
-Blind super-resolution with scale factor of 4 on Gaussian model with std 4.5/sqrt(2) (left is DBPN iterative without correction, left is with estimated correction filter)
+Blind super-resolution with scale factor of 4 on Gaussian model with std 4.5/sqrt(2) (left is DBPN without correction, left is with estimated correction filter)
 
 <img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/man2_Gauss_std3.2_x4_s.png"> <img width="400" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/man2_Gauss_std3.2_x4_s_x4_corr_l0_est.png">
 
 #### Images from DIV2KRK dataset
 
-Blind super-resolution with scale factor of 2 tested on images from DIV2KRK dataset http://www.wisdom.weizmann.ac.il/~vision/kernelgan/ (left is DBPN iterative without correction, left is with estimated correction filter)
+Blind super-resolution with scale factor of 2 tested on images from DIV2KRK dataset http://www.wisdom.weizmann.ac.il/~vision/kernelgan/ (left is DBPN without correction, left is with estimated correction filter)
 <img width="500" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/im_31.png"> <img width="500" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/im_31_x2_corr_est.png">
 
 <img width="500" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/im_59.png"> <img width="500" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/im_59_x2_corr_est.png">
 
-<img width="600" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/im_66.png"> <img width="600" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/im_66_x2_corr_est.png">
+<img width="500" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/im_66.png"> <img width="500" src="https://github.com/shadyabh/Correction-Filter/blob/master/figs/blind_SR/im_66_x2_corr_est.png">
 
 
 # Citation:

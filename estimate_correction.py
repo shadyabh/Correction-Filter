@@ -3,7 +3,6 @@ import torch
 import torch.fft
 import utils
 import os
-import Config
 import correction_func
 import scipy.io as io
 import argparse
